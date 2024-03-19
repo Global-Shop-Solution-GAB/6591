@@ -1,0 +1,113 @@
+﻿Program.Sub.Preflight.Start
+V.Global.sError.Declare(String)
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Author: Arturo Almaguer
+'Date: 20 January 2022
+'Customer: Miller Weldmaster Corp
+'This program will stop the creation of a new shipment in case its SO terms equals to CREDITCARD and there is not credit card information filled out in PAYMENT screen.
+'This script is triggered from Shipment Pre-Save 28530 hook
+
+Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+
+F.Intrinsic.Control.Try
+
+	V.Local.sBDF.Declare(String)
+	V.Local.sSQL.Declare(String)
+	V.Local.sTerms.Declare(String)
+	
+	V.Local.sBDF.Set("ShippingLines")
+	F.Intrinsic.BDF.Load(V.Local.sBDF,"AUX001")
+		
+	'This subroutine will return either a singular order number or "Multiple" if there is more than one order on the shipment
+	F.Intrinsic.Control.CallSub(GetOrderFromBDF,"BDF",V.Local.sBDF)
+	'V.Args.SO
+	
+	'Getting the SO terms
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	Function.Intrinsic.String.Build("select RTRIM(TERMS) TERMS from V_ORDER_HEADER where ORDER_NO = '{0}';", V.Args.SO, V.Local.sSQL)
+	F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Local.sTerms)
+	
+	'If SO terms = CREDITCARD, then continue with process below
+	F.Intrinsic.Control.If(V.Local.sTerms, =, "CREDITCARD")
+	
+		'Validating if SO has credit card selected as payment option
+		F.Intrinsic.String.Build("select PYMNT_TYPE from PAYMENT where ORDER_NO = '{0}' and TRANS = 'ORDER';", V.Args.SO, V.Local.sSQL)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Local.sSQL)
+		
+		'Displaying an error message and cancelling shipment creation if there is no cc information
+		F.Intrinsic.Control.If(V.Ambient.ExecuteAndReturnEOF)
+			V.Passed.777777.Set(1)
+			F.Intrinsic.UI.Msgbox("There is no credit card information populated on the SO. Cancelling shipment.", "GCG 6591")
+		F.Intrinsic.Control.EndIf
+		
+	F.Intrinsic.Control.EndIf	
+	F.ODBC.Connection!Con.Close
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Main.End
+Program.Sub.GetOrderFromBDF.Start
+'This subroutine was taken from ARC ID 6507 project.
+'V.Args.BDF - passing BDF name in case i need to use this anywhere else
+'Reads the Sales Order from Shipping BDF. If more than one order is found, return "Multiple"
+
+F.Intrinsic.Control.Try
+	
+	V.Local.sOrders.Declare
+	V.Local.sBDFRead.Declare
+	V.Local.iCnt.Declare
+	V.Local.iRowCnt.Declare
+	V.Local.iNewUBound.Declare
+	V.Local.bInArray.Declare
+	
+	F.Intrinsic.BDF.ReadRowCount(V.Args.BDF,V.Local.iRowCnt)
+	F.Intrinsic.Math.Sub(V.Local.iRowCnt,1,V.Local.iRowCnt)
+	
+	F.Intrinsic.BDF.TextMatrix(V.Args.BDF,0,0,V.Local.sOrders)
+	F.Intrinsic.Control.For(V.Local.iCnt,1,V.Local.iRowCnt,1)
+		F.Intrinsic.BDF.TextMatrix(V.Args.BDF,0,V.Local.iCnt,V.Local.sBDFRead)
+		F.Intrinsic.Control.If(V.Local.sOrders,<>,V.Local.sBDFRead)
+			V.Local.sOrders.Set("Multiple")
+			F.Intrinsic.Control.ExitFor(V.Local.iCnt)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iCnt)
+	
+	F.Intrinsic.String.LPad(V.Local.sOrders,"0",7,V.Local.sOrders)
+	F.Intrinsic.Variable.AddRV("SO",V.Local.sOrders)
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.GetOrderFromBDF.End
+Program.Sub.CatchError.Start
+'To display the error
+F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}", V.Ambient.ScriptPath, V.Ambient.Newline, V.Ambient.SubroutineCalledFrom, V.Ambient.ErrorNumber, V.Ambient.ErrorDescription, V.Ambient.GABVersion, V.Global.sError) 
+F.Intrinsic.UI.Msgbox(V.Global.sError)
+F.Intrinsic.Control.CallSub("Unload")
+Program.Sub.CatchError.End
+Program.Sub.Unload.Start
+'To cancel the new shipment from being processed
+V.Passed.777777.Set(1)
+
+''Closes the connection if it is open
+f.Intrinsic.Control.If(v.ODBC.con.exists,=,"1") 	
+    f.ODBC.Connection!Con.Close
+f.Intrinsic.Control.EndIf
+
+'End program
+F.Intrinsic.Control.End()
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$apadilla$}$20220120111238547$}$Lag9STqBJOmNXSbd5+msRcBWPGz0aFqSzPePUG9qWbyv6vMNh7no7LetxrOWXeYOPJz0M1JhCxRPRFgumMkueQ==
+Program.Sub.Comments.End
